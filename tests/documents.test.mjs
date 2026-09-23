@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {analyzeText,applyReview,proposeAssociations,recordsForPerson,fingerprint} from '../dist/document-model.mjs';
+import {analyzeText,applyReview,proposeAssociations,recordsForPerson,fingerprint,needsReading} from '../dist/document-model.mjs';
 import {extractDocument,pdfText} from '../dist/document-reader.mjs';
 import * as XLSX from '../dist/vendor/xlsx.mjs';
 const people=[{id:'anna',name:'Anna Soler',origin:'Girona',ticket:'No cal',checkin:'Pendent'},{id:'marc',name:'Marc Abella'}];
@@ -28,3 +28,5 @@ test('a real PDF is decoded, not just matched by filename',async()=>{const parse
 test('unsupported files are explicit errors',async()=>assert.rejects(()=>extractDocument(new File(['x'],'archive.zip')),/Format no compatible/));
 test('separate passenger sections on the same page retain their own routes',()=>{const r=proposeAssociations(ticket+'\nPassenger: Marc Abella\nFrom: GRO\nTo: BGY',people);assert.equal(r.find(p=>p.personId==='anna').segments[0].origin,'BCN');assert.equal(r.find(p=>p.personId==='anna').segments.length,1);assert.equal(r.find(p=>p.personId==='marc').segments[0].origin,'GRO')});
 test('standalone airline surname/name proposes a new passenger',()=>{const r=proposeAssociations('PUIG/JULIA\nFrom: BCN\nTo: FCO',[]);assert.equal(r[0].name,'PUIG/JULIA')});
+
+test("opening a manual review does not prevent later content reading",()=>{const file={path:"a.pdf",size:20,modified:1};assert.equal(needsReading(file,{fingerprint:fingerprint(file),status:"unread"}),true);assert.equal(needsReading(file,{fingerprint:fingerprint(file),status:"ready"}),false)});

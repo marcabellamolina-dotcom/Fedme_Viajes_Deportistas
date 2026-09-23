@@ -1,6 +1,7 @@
 import {normalize,parseCSV} from './core.mjs';
 export const readerVersion=1;
 export const fingerprint=f=>`${readerVersion}:${f.path}:${f.size}:${f.modified}`;
+export const needsReading=(file,reading)=>!reading||reading.fingerprint!==fingerprint(file)||['error','unread'].includes(reading.status);
 const clean=s=>String(s??'').replace(/\s+/g,' ').trim();
 const words=s=>normalize(s).replace(/[^a-z0-9]+/g,' ').trim();
 const nameWords=s=>words(s).split(' ').filter(w=>w&&!['mr','mrs','ms','miss','sr','sra','dr','adult','adulto','adultos','adults'].includes(w));
