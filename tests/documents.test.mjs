@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {analyzeText,applyReview,proposeAssociations,recordsForPerson,fingerprint,needsReading,syncDetectedParticipants,removeParticipant} from '../dist/document-model.mjs';
+import {analyzeText,applyReview,proposeAssociations,recordsForPerson,fingerprint,needsReading,syncDetectedParticipants,removeParticipant,extractPurchase} from '../dist/document-model.mjs';
 import {extractDocument,pdfText} from '../dist/document-reader.mjs';
 import * as XLSX from '../dist/vendor/xlsx.mjs';
 const people=[{id:'anna',name:'Anna Soler',origin:'Girona',ticket:'No cal',checkin:'Pendent'},{id:'marc',name:'Marc Abella'}];
@@ -84,4 +84,40 @@ test('document reading workflow saves participants and opens their list',async()
 test('cached text with a previously unrecognized heading creates the participant',()=>{
   const t={people:[],readings:{a:{status:'ready',fingerprint:'x',proposals:[],text:'Passengers:\n1. Anna Soler\nFrom: BCN\nTo: MXP'}}};
   assert.equal(syncDetectedParticipants(t).added,1);assert.equal(t.people[0].name,'Anna Soler');
+});
+
+test('purchase reference and labelled email are extracted from booking text',()=>{
+  const p=extractPurchase('Booking reference: ABC123\nBooking email: MARC@example.cat\nSupport: help@airline.test');
+  assert.equal(p.reference,'ABC123');assert.equal(p.email,'marc@example.cat');
+  assert.equal(extractPurchase('E-mail de compra: anna@example.cat').email,'anna@example.cat');
+});
+test('multiple purchase emails remain unresolved instead of picking one',()=>{
+  assert.equal(extractPurchase('Email de compra: anna@example.cat\nEmail de compra: marc@example.cat').email,'');
+  assert.equal(extractPurchase('Support: help@example.cat').email,'');
+});
+test('detected purchases are saved on the participant and migrate from cached readings',()=>{
+  const t={people:[{id:'anna',name:'Anna Soler'}],readings:{'a.pdf':{status:'ready',fingerprint:'a',text:'Email de compra: anna@example.cat\nBooking reference: ABC123',proposals:[{personId:'anna',name:'Anna Soler',segments:[]}]}}};
+  assert.equal(syncDetectedParticipants(t).updated,1);
+  assert.deepEqual(t.people[0].purchases,[{documentPath:'a.pdf',reference:'ABC123',email:'anna@example.cat',pending:true}]);
+  assert.equal(syncDetectedParticipants(t).updated,0);
+});
+test('different purchases for the same participant remain separate',()=>{
+  const rows=[['Nom','Referència de compra','Email de compra'],['Anna Soler','ABC123','anna@example.cat'],['Anna Soler','DEF456','club@example.cat']];
+  const parsed=analyzeText({text:'Excel',tables:[rows],people:[]});
+  const t={people:[],files:[{path:'bookings.xlsx'}],readings:{'bookings.xlsx':{...parsed,status:'ready',fingerprint:'a'}}};
+  syncDetectedParticipants(t);assert.equal(t.people.length,1);assert.equal(t.people[0].purchases.length,2);
+  const choices=t.readings['bookings.xlsx'].proposals.map(p=>({...p,enabled:true}));
+  const reviewed=applyReview(t,'bookings.xlsx',choices);
+  assert.equal(reviewed.people[0].purchases.length,2);assert.equal(reviewed.people[0].purchases[1].email,'club@example.cat');
+  assert.ok(reviewed.people[0].purchases.every(p=>!p.pending));
+});
+test('editing purchase details preserves purchases from another document',()=>{
+  let t={people:[{id:'anna',name:'Anna Soler',purchases:[{documentPath:'other.pdf',reference:'OLD',email:'old@example.cat',pending:false}]}],files:[{path:'new.pdf'}],readings:{'new.pdf':{fingerprint:'new'}}};
+  t=applyReview(t,'new.pdf',[{enabled:true,personId:'anna',purchase:{reference:'NEW',email:'new@example.cat'},segments:[]}]);
+  assert.equal(t.people[0].purchases.length,2);assert.equal(t.people[0].purchases[0].reference,'OLD');
+  assert.equal(recordsForPerson(t,'anna')[0].purchases[0].email,'new@example.cat');
+});
+test('invalid email fails review without mutating participants',()=>{
+  const t=fixture();assert.throws(()=>applyReview(t,'ticket.pdf',[{enabled:true,personId:'anna',purchase:{email:'invalid'},segments:[]}]));
+  assert.equal(t.people[0].purchases,undefined);
 });

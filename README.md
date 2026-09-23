@@ -12,6 +12,10 @@ Backoffice en català per a viatges d'esquí i ciclisme. Web estàtica; les dade
 6. **Revisar / associar** mostra el text extret, les persones proposades i els trajectes editables. Es poden seleccionar participants existents, crear-ne de nous, afegir o treure trajectes, associar un document a diverses persones, o ometre'l.
 7. Després de confirmar, la fitxa del participant mostra els documents i trajectes associats, amb descàrrega del document original.
 
+## Dades de compra
+
+La lectura detecta la referència de compra (localitzador/PNR) i l’email de compra etiquetat al document o a les columnes d’Excel/CSV. Es guarden a `participant.purchases`, separades per document i reserva, i es mostren al llistat i al detall. La revisió permet corregir-los sense sobreescriure reserves d’altres documents. Les lectures antigues també es completen a partir del text ja guardat. Si hi ha diversos emails de compra possibles, el camp queda buit per revisar; els emails de suport no s’assignen com a comprador.
+
 ## Reconeixement i límits
 
 El reconeixement utilitza etiquetes habituals de bitllets i reserves (català, castellà i anglès), noms complets existents, noms de passatger etiquetats i formats cognom/nom. No és una interpretació universal amb IA. Els camps no identificats queden buits perquè l'usuari els revisi. Noms iguals no es resolen arbitràriament. L'OCR utilitza el model anglès i pot confondre caràcters o accents.
