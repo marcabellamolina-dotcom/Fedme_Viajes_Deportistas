@@ -1,0 +1,14 @@
+{
+  "name": "equip-viatges",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "vendor": "node scripts/vendor.mjs"
+  },
+  "dependencies": {
+    "pdfjs-dist": "6.3.289",
+    "tesseract.js": "7.0.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  }
+}

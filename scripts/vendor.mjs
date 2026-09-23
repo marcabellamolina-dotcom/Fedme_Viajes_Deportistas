@@ -1,0 +1,13 @@
+import {cp,mkdir,readdir,writeFile} from 'node:fs/promises';
+await mkdir('dist/vendor/pdf',{recursive:true});
+for(const file of ['pdf.min.mjs','pdf.worker.min.mjs']) await cp(`node_modules/pdfjs-dist/legacy/build/${file}`,`dist/vendor/pdf/${file}`);
+for(const dir of ['cmaps','standard_fonts','wasm']) await cp(`node_modules/pdfjs-dist/${dir}`,`dist/vendor/pdf/${dir}`,{recursive:true});
+await cp('node_modules/pdfjs-dist/LICENSE','dist/vendor/pdf/LICENSE');
+await mkdir('dist/vendor/ocr/core',{recursive:true});
+for(const file of ['tesseract.min.js','worker.min.js','tesseract.min.js.LICENSE.txt','worker.min.js.LICENSE.txt']) await cp(`node_modules/tesseract.js/dist/${file}`,`dist/vendor/ocr/${file}`);
+for(const file of await readdir('node_modules/tesseract.js-core')) if(file.endsWith('.wasm.js')||file==='LICENSE') await cp(`node_modules/tesseract.js-core/${file}`,`dist/vendor/ocr/core/${file}`);
+await cp('node_modules/tesseract.js/LICENSE.md','dist/vendor/ocr/LICENSE.md');
+await cp('node_modules/xlsx/xlsx.mjs','dist/vendor/xlsx.mjs');
+await cp('node_modules/xlsx/LICENSE','dist/vendor/xlsx.LICENSE');
+await writeFile('dist/vendor/NOTICE.txt','PDF.js: Mozilla, Apache-2.0. Tesseract.js and Tesseract.js-core: Apache-2.0. SheetJS CE 0.20.3: Apache-2.0. OCR English training data: tesseract.js-data/eng 1.0.0, Apache-2.0. Libraries and language data are served locally; document contents are not sent to these projects.\n');
+console.log('Biblioteques preparades.');

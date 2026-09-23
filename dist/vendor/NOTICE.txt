@@ -1,0 +1,1 @@
+PDF.js: Mozilla, Apache-2.0. Tesseract.js and Tesseract.js-core: Apache-2.0. SheetJS CE 0.20.3: Apache-2.0. OCR English training data: tesseract.js-data/eng 1.0.0, Apache-2.0. Libraries and language data are served locally; document contents are not sent to these projects.
