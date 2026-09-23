@@ -101,12 +101,21 @@ export function recordsForPerson(trip,personId){return Object.entries(trip.readi
   const proposed=r.status!=='ignored'&&r.reviewedFingerprint!==r.fingerprint?(r.proposals||[]).filter(c=>c.personId===personId):[];
   if(!confirmed.length&&!proposed.length)return [];
   const pending=!confirmed.length;
-  return [{path,name:r.name||path,reading:r,purchases:(pending?proposed:confirmed).map(c=>purchaseValues(c.purchase||r.purchase||extractPurchase(r.text||'',c.segments||[]))),pending,stale:!pending&&r.reviewedFingerprint!==r.fingerprint,missing:!trip.files.some(f=>f.path===path),segments:(pending?proposed:confirmed).flatMap(c=>c.segments||[])}];
+  return [{path,name:r.name||path,reading:r,purchases:(pending?proposed:confirmed).map(c=>purchaseValues(c.purchase||r.purchase||extractPurchase(r.text||'',c.segments||[]))),pending,stale:!pending&&r.reviewedFingerprint!==r.fingerprint,missing:!(trip.files||[]).some(f=>f.path===path),segments:(pending?proposed:confirmed).flatMap(c=>c.segments||[])}];
 })}
 
-export function applyReview(trip,path,choices){const reading=trip.readings?.[path];if(!reading)throw Error('Torna a llegir el document abans de confirmar.');const draft=structuredClone(trip),r=draft.readings[path],confirmed=[];for(const choice of choices){if(!choice.enabled)continue;let person;if(choice.personId){person=draft.people.find(p=>p.id===choice.personId);if(!person)throw Error('Un participant seleccionat ja no existeix.')}else{const name=clean(choice.name);if(!name)throw Error('Indica el nom de cada participant nou.');const matches=draft.people.filter(p=>nameKey(p.name)===nameKey(name));if(matches.length>1)throw Error(`Hi ha més d’una persona amb el nom ${name}. Selecciona-la a la llista.`);person=matches[0];if(!person){person={id:crypto.randomUUID(),name,origin:'',phone:'',arrival:'',ticket:'Pendent',checkin:'Pendent',pickup:'',parking:'',vehicle:'',notes:''};draft.people.push(person)}}const segments=(choice.segments||[]).map(s=>Object.fromEntries(Object.entries(s).map(([k,v])=>[k,clean(v)]))).filter(s=>Object.values(s).some(Boolean));const purchase=purchaseValues(choice.purchase);if(purchase.email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(purchase.email))throw Error('Revisa el format de l’email de compra.');const prior=confirmed.find(c=>c.personId===person.id&&JSON.stringify(c.purchase)===JSON.stringify(purchase));if(prior){for(const s of segments)if(!prior.segments.some(x=>JSON.stringify(x)===JSON.stringify(s)))prior.segments.push(s)}else confirmed.push({personId:person.id,segments,purchase});}if(!confirmed.length)throw Error('Selecciona almenys una persona per associar el document.');syncPurchases(draft,path,confirmed,false);r.confirmed=confirmed;r.reviewedAt=Date.now();r.reviewedFingerprint=r.fingerprint;r.status='reviewed';return draft}
+export function journeysForPerson(trip,personId){
+  return recordsForPerson(trip,personId).flatMap(r=>r.segments.filter(s=>s.origin||s.destination||s.departure||s.arrival).map(s=>({...s,documentPath:r.path,pending:r.pending,stale:r.stale})));
+}
+export function syncJourneys(trip){
+  let updated=0;
+  for(const person of trip.people){const journeys=journeysForPerson(trip,person.id);if(JSON.stringify(person.journeys||[])!==JSON.stringify(journeys)){person.journeys=journeys;updated++;}}
+  return updated;
+}
 
-// Materialize detected names immediately; itinerary associations still require review.
+export function applyReview(trip,path,choices){const reading=trip.readings?.[path];if(!reading)throw Error('Torna a llegir el document abans de confirmar.');const draft=structuredClone(trip),r=draft.readings[path],confirmed=[];for(const choice of choices){if(!choice.enabled)continue;let person;if(choice.personId){person=draft.people.find(p=>p.id===choice.personId);if(!person)throw Error('Un participant seleccionat ja no existeix.')}else{const name=clean(choice.name);if(!name)throw Error('Indica el nom de cada participant nou.');const matches=draft.people.filter(p=>nameKey(p.name)===nameKey(name));if(matches.length>1)throw Error(`Hi ha més d’una persona amb el nom ${name}. Selecciona-la a la llista.`);person=matches[0];if(!person){person={id:crypto.randomUUID(),name,origin:'',phone:'',arrival:'',ticket:'Pendent',checkin:'Pendent',pickup:'',parking:'',vehicle:'',notes:''};draft.people.push(person)}}const segments=(choice.segments||[]).map(s=>Object.fromEntries(Object.entries(s).map(([k,v])=>[k,clean(v)]))).filter(s=>Object.values(s).some(Boolean));const purchase=purchaseValues(choice.purchase);if(purchase.email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(purchase.email))throw Error('Revisa el format de l’email de compra.');const prior=confirmed.find(c=>c.personId===person.id&&JSON.stringify(c.purchase)===JSON.stringify(purchase));if(prior){for(const s of segments)if(!prior.segments.some(x=>JSON.stringify(x)===JSON.stringify(s)))prior.segments.push(s)}else confirmed.push({personId:person.id,segments,purchase});}if(!confirmed.length)throw Error('Selecciona almenys una persona per associar el document.');syncPurchases(draft,path,confirmed,false);r.confirmed=confirmed;r.reviewedAt=Date.now();r.reviewedFingerprint=r.fingerprint;r.status='reviewed';syncJourneys(draft);return draft}
+
+// Save detected participants and their document-backed journeys immediately; review remains available.
 export function syncDetectedParticipants(trip){
   let added=0,linked=0,unresolved=0,updated=0;
   // Remove only untouched, automatically created labels from older readers.
@@ -135,6 +144,7 @@ export function syncDetectedParticipants(trip){
     }
     updated+=syncPurchases(trip,path,(r.proposals||[]).filter(p=>p.personId&&!p.ambiguous),true);
   }
+  updated+=syncJourneys(trip);
   return {added,linked,unresolved,updated};
 }
 

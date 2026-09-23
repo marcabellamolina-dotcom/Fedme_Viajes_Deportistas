@@ -43,3 +43,5 @@ Referències: [PDF.js](https://mozilla.github.io/pdf.js/examples/), [Tesseract.j
 El lector distingeix les taules de passatgers de Vueling, easyJet i Wizz Air de les signatures i dades de pagament. Conserva el destinatari de la confirmació original com a email de compra, el localitzador i els trajectes amb escales; elimina repeticions del mateix itinerari dins dels fils reenviats. També reconeix PDF sense extensió. Les coincidències de cognoms abreujats queden marcades per revisar i no s’inventa l’any quan falta al document.
 
 Validació local amb una carpeta de set PDF: sis reserves i tretze participants, sense duplicats en repetir la importació. Els documents reals no formen part del repositori ni del desplegament.
+
+Els trajectes detectats es guarden a cada participant i es mostren a la llista i a la fitxa. El resum del viatge inclou una graella amb comprovacions de trajectes, bitllet, check-in i recollida, amb filtres de pendents i accés directe a la gestió. L’aparcament es mostra com a informació, sense donar-lo per obligatori.
