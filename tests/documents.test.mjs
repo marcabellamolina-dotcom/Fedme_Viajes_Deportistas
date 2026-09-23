@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {analyzeText,applyReview,proposeAssociations,recordsForPerson,fingerprint,needsReading} from '../dist/document-model.mjs';
+import {analyzeText,applyReview,proposeAssociations,recordsForPerson,fingerprint,needsReading,syncDetectedParticipants,removeParticipant} from '../dist/document-model.mjs';
 import {extractDocument,pdfText} from '../dist/document-reader.mjs';
 import * as XLSX from '../dist/vendor/xlsx.mjs';
 const people=[{id:'anna',name:'Anna Soler',origin:'Girona',ticket:'No cal',checkin:'Pendent'},{id:'marc',name:'Marc Abella'}];
@@ -30,3 +30,58 @@ test('separate passenger sections on the same page retain their own routes',()=>
 test('standalone airline surname/name proposes a new passenger',()=>{const r=proposeAssociations('PUIG/JULIA\nFrom: BCN\nTo: FCO',[]);assert.equal(r[0].name,'PUIG/JULIA')});
 
 test("opening a manual review does not prevent later content reading",()=>{const file={path:"a.pdf",size:20,modified:1};assert.equal(needsReading(file,{fingerprint:fingerprint(file),status:"unread"}),true);assert.equal(needsReading(file,{fingerprint:fingerprint(file),status:"ready"}),false)});
+
+test('reading creates participants immediately and repeat reads do not duplicate them',()=>{
+  const t={people:[],files:[{path:'ticket.pdf'}],readings:{'ticket.pdf':{...analyzeText({text:ticket,people:[]}),status:'ready',fingerprint:'a'}}};
+  assert.equal(syncDetectedParticipants(t).added,1);
+  assert.equal(t.people.length,1);
+  assert.equal(t.people[0].ticket,'Pendent');
+  assert.equal(t.people[0].checkin,'Pendent');
+  assert.equal(syncDetectedParticipants(t).added,0);
+  assert.equal(recordsForPerson(t,t.people[0].id)[0].pending,true);
+  assert.equal(recordsForPerson(t,t.people[0].id)[0].segments[0].origin,'BCN');
+});
+test('old cached proposals populate the list without reopening the folder',()=>{
+  const t={people:[],readings:{'a.pdf':{status:'ready',fingerprint:'old',proposals:[{name:'Anna Soler',segments:[]}]},'b.pdf':{status:'ready',fingerprint:'old',proposals:[{name:'SOLER/ANNA',segments:[]}]}}};
+  const result=syncDetectedParticipants(t);
+  assert.equal(result.added,1);assert.equal(t.people.length,1);
+  assert.equal(t.readings['a.pdf'].proposals[0].personId,t.readings['b.pdf'].proposals[0].personId);
+});
+test('ignored or confirmed documents do not recreate rejected participants',()=>{
+  const t={people:[],readings:{a:{status:'ignored',proposals:[{name:'Anna Soler'}]},b:{status:'reviewed',fingerprint:'x',reviewedFingerprint:'x',proposals:[{name:'Marc Abella'}]}}};
+  assert.equal(syncDetectedParticipants(t).added,0);
+});
+test('duplicate existing names stay ambiguous and never create a third participant',()=>{
+  const t={people:[{id:'a',name:'Anna Soler'},{id:'b',name:'Anna Soler'}],readings:{a:{status:'ready',fingerprint:'x',proposals:[{name:'Anna Soler'}]}}};
+  assert.equal(syncDetectedParticipants(t).unresolved,1);assert.equal(t.people.length,2);assert.equal(t.readings.a.proposals[0].ambiguous,true);
+});
+test('deleting an automatically detected participant persists across reload and rereading',()=>{
+  const t={people:[],readings:{a:{status:'ready',fingerprint:'x',proposals:[{name:'Anna Soler',segments:[]}]}}};
+  syncDetectedParticipants(t);removeParticipant(t,t.people[0].id);
+  assert.equal(syncDetectedParticipants(t).added,0);
+  t.readings.a.proposals=[{name:'Anna Soler',segments:[]}];
+  assert.equal(syncDetectedParticipants(t).added,0);
+});
+test('plural headings and numbered passenger lists are recognized',()=>{
+  for(const heading of ['Passengers:','Passenger(s):','Pasajeros:','Passatgers:']){
+    const r=proposeAssociations(heading+'\n1. Anna Soler\n2. Marc Abella\nFrom: BCN\nTo: MXP',[]);
+    assert.deepEqual(r.map(p=>p.name),['Anna Soler','Marc Abella']);
+  }
+});
+test('document reading workflow saves participants and opens their list',async()=>{
+  const {createDocumentFeatures}=await import('../dist/document-ui.mjs');
+  const file=new File(['Nom;Origen;Destinació\nAnna Soler;BCN;MXP\nMarc Abella;GRO;BGY'],'people.csv');
+  const t={id:'trip',people:[],files:[{name:file.name,path:file.name,size:file.size,modified:1}]};
+  let saves=0,view='';
+  const oldDocument=globalThis.document;globalThis.document={querySelector:()=>null};
+  try{
+    const feature=createDocumentFeatures({esc:String,getTrip:()=>t,getState:()=>({trips:[t]}),toast:()=>{},read:async()=>({files:[{path:file.name,file}]}),persist:async()=>{saves++},render:()=>{},goToDocuments:()=>{view='documents'},goToParticipants:()=>{view='participants'}});
+    await feature.analyze();
+    assert.equal(t.people.length,2);assert.equal(view,'participants');assert.ok(saves>0);
+    await feature.analyze();assert.equal(t.people.length,2);
+  }finally{globalThis.document=oldDocument}
+});
+test('cached text with a previously unrecognized heading creates the participant',()=>{
+  const t={people:[],readings:{a:{status:'ready',fingerprint:'x',proposals:[],text:'Passengers:\n1. Anna Soler\nFrom: BCN\nTo: MXP'}}};
+  assert.equal(syncDetectedParticipants(t).added,1);assert.equal(t.people[0].name,'Anna Soler');
+});
