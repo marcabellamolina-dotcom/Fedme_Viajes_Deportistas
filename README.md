@@ -37,3 +37,9 @@ IndexedDB conserva viatges, fitxes, permisos/còpies de fitxers i resultats de l
 Servir dist per HTTP local o HTTPS, no file://.
 
 Referències: [PDF.js](https://mozilla.github.io/pdf.js/examples/), [Tesseract.js](https://github.com/naptha/tesseract.js/blob/master/docs/api.md), [SheetJS](https://docs.sheetjs.com/docs/getting-started/installation/standalone/).
+
+### Lectura de confirmacions de companyies
+
+El lector distingeix les taules de passatgers de Vueling, easyJet i Wizz Air de les signatures i dades de pagament. Conserva el destinatari de la confirmació original com a email de compra, el localitzador i els trajectes amb escales; elimina repeticions del mateix itinerari dins dels fils reenviats. També reconeix PDF sense extensió. Les coincidències de cognoms abreujats queden marcades per revisar i no s’inventa l’any quan falta al document.
+
+Validació local amb una carpeta de set PDF: sis reserves i tretze participants, sense duplicats en repetir la importació. Els documents reals no formen part del repositori ni del desplegament.

@@ -1,12 +1,20 @@
+import {parseAirlineConfirmation} from './airline-parser.mjs';
 import {normalize,parseCSV} from './core.mjs';
-export const readerVersion=2;
+export const readerVersion=3;
 export const fingerprint=f=>`${readerVersion}:${f.path}:${f.size}:${f.modified}`;
 export const needsReading=(file,reading)=>!reading||reading.fingerprint!==fingerprint(file)||['error','unread'].includes(reading.status);
 const clean=s=>String(s??'').replace(/\s+/g,' ').trim();
 const words=s=>normalize(s).replace(/[^a-z0-9]+/g,' ').trim();
 const nameWords=s=>words(s).split(' ').filter(w=>w&&!['mr','mrs','ms','miss','sr','sra','dr','adult','adulto','adultos','adults'].includes(w));
 export const nameKey=s=>nameWords(s).sort().join(' ');
-const STOP=/\b(passenger|passatger|pasajero|departure|arrival|flight|booking|reference|document|ticket|reserva|aeroport|airport|airlines|boarding|confirmacio|telefono|telefon|equipatge|luggage|origen|destinacio|destination|conductor|hora|sortida|tornada|anada|adult|adults|seat|seient|check|nom|name|nombre)\b/i;
+export function matchingPeople(name,people){
+  const exact=people.filter(p=>nameKey(p.name)===nameKey(name)||(p.nameAliases||[]).some(alias=>nameKey(alias)===nameKey(name)));
+  if(exact.length)return exact;
+  const tokens=s=>nameWords(s).filter(w=>!['de','del','la','las','los','y','i'].includes(w));
+  const a=tokens(name);
+  return people.filter(p=>{const b=tokens(p.name),short=a.length<b.length?a:b,long=a.length<b.length?b:a;return short.length>=3&&short.length!==long.length&&short.every((word,i)=>word===long[i]);});
+}
+const STOP=/\b(passenger|passatger|pasajero|departure|arrival|flight|booking|reference|document|ticket|reserva|aeroport|airport|airlines|boarding|confirmacio|telefono|telefon|equipatge|luggage|origen|destinacio|destination|conductor|hora|sortida|tornada|anada|adult|adults|seat|seient|check|nom|name|nombre|servicios|servicio|vuelos|vuelo|ida|vuelta|como|alquilar|coche|reservar|alojamiento)\b/i;
 function validName(s){const n=clean(s).replace(/^(?:MR|MRS|MS|MISS|SR|SRA|DR)\.?\s+/i,'').replace(/\s+(?:MR|MRS|MS|MISS|SR|SRA|DR)\.?$/i,'');return n.length<=90&&nameWords(n).length>=2&&nameWords(n).length<=7&&/^[\p{L} .,'’/\-]+$/u.test(n)&&!STOP.test(words(n))?n:''}
 function candidatesFromText(text){
   const lines=text.split(/\r?\n/).map(clean).filter(Boolean),found=[];
@@ -70,6 +78,8 @@ const TABLE_HEADERS={name:['nom','nom i cognoms','nom complet','nombre','nombre 
 export function tableCandidates(rows){if(!rows?.length)return [];const headerIndex=rows.findIndex(row=>row.some(c=>TABLE_HEADERS.name.includes(normalize(c))));if(headerIndex<0)return [];const headers=rows[headerIndex].map(normalize),columns=Object.fromEntries(Object.entries(TABLE_HEADERS).map(([key,aliases])=>[key,headers.findIndex(h=>aliases.includes(h))]));return rows.slice(headerIndex+1).filter(r=>clean(r[columns.name])).map(r=>{const name=clean(r[columns.name]);const segment=Object.fromEntries(Object.entries(columns).filter(([k,i])=>!['name','email'].includes(k)&&i>=0&&clean(r[i])).map(([k,i])=>[k,clean(r[i])]));return {name,evidence:r.map(clean).join(' | '),purchase:{reference:segment.reference||'',email:columns.email>=0?clean(r[columns.email]):''},segments:Object.keys(segment).length?[segment]:[]}})}
 function proposeOne(text,people=[],tables=[]){const segments=extractSegments(text),purchase=extractPurchase(text,segments);let candidates=tables.flatMap(tableCandidates);if(!candidates.length)candidates=candidatesFromText(text).map(c=>({...c,segments,purchase}));const normalizedLines=text.split(/\r?\n/).map(line=>({line,key:words(line),tokens:nameWords(line)}));for(const p of people){const tokens=nameWords(p.name);if(tokens.length<2)continue;const line=normalizedLines.find(l=>tokens.every(token=>l.tokens.includes(token)));if(line&&!candidates.some(c=>nameKey(c.name)===nameKey(p.name)))candidates.push({name:p.name,evidence:line.line,segments,purchase})}const grouped=new Map();for(const candidate of candidates){const key=nameKey(candidate.name);if(!key)continue;const groupKey=key+'|'+JSON.stringify(purchaseValues(candidate.purchase||purchase));const existing=grouped.get(groupKey);if(existing){for(const s of candidate.segments){if(!existing.segments.some(x=>JSON.stringify(x)===JSON.stringify(s)))existing.segments.push(s)}continue}const matches=people.filter(p=>nameKey(p.name)===key);grouped.set(groupKey,{name:candidate.name,personId:matches.length===1?matches[0].id:'',ambiguous:matches.length>1,evidence:candidate.evidence.slice(0,350),segments:structuredClone(candidate.segments),purchase:structuredClone(candidate.purchase||purchase)})}return [...grouped.values()].slice(0,200)}
 export function proposeAssociations(text,people=[],tables=[]){
+  const airline=!tables.length?parseAirlineConfirmation(text):null;
+  if(airline)return airline.passengers.map(p=>{const matches=matchingPeople(p.name,people);return {...p,personId:matches.length===1?matches[0].id:'',ambiguous:matches.length>1,nameVariant:matches.length===1&&nameKey(matches[0].name)!==nameKey(p.name),segments:structuredClone(airline.segments),purchase:structuredClone(airline.purchase)};});
   const sections=tables.length?[text]:text.split('\f').flatMap(page=>{
     const found=candidatesFromText(page),lines=page.split(/\r?\n/);
     const starts=found.map(c=>lines.findIndex(line=>clean(line)===c.evidence)).filter(i=>i>=0).sort((a,b)=>a-b);
@@ -85,7 +95,7 @@ export function proposeAssociations(text,people=[],tables=[]){
   }}
   return [...merged.values()];
 }
-export function analyzeText({text,people,tables=[],name=''}){const proposals=proposeAssociations(text,people,tables);const warnings=[];if(!text.trim())warnings.push('No s’ha pogut extreure text. Assigna el document manualment.');else if(!proposals.length)warnings.push('No s’ha identificat cap passatger amb prou informació. Selecciona’l manualment.');if(proposals.some(p=>p.ambiguous))warnings.push('Hi ha participants amb el mateix nom. Tria la persona correcta.');const purchase=extractPurchase(text);if(purchase.emailCandidates.length>1)warnings.push('Hi ha més d’un email de compra. Selecciona el correcte per a cada persona.');if(purchase.referenceCandidates.length>1)warnings.push('Hi ha diverses referències de compra. Comprova quina correspon a cada persona.');return {proposals,warnings,text:text.slice(0,80000),name,purchase}}
+export function analyzeText({text,people,tables=[],name=''}){const proposals=proposeAssociations(text,people,tables);const warnings=[];if(!text.trim())warnings.push('No s’ha pogut extreure text. Assigna el document manualment.');else if(!proposals.length)warnings.push('No s’ha identificat cap passatger amb prou informació. Selecciona’l manualment.');if(proposals.some(p=>p.ambiguous))warnings.push('Hi ha participants amb el mateix nom. Tria la persona correcta.');const airline=!tables.length?parseAirlineConfirmation(text):null;const purchase=airline?.purchase||extractPurchase(text);if(airline)warnings.push(...airline.warnings);if(purchase.emailCandidates.length>1)warnings.push('Hi ha més d’un email de compra. Selecciona el correcte per a cada persona.');if(purchase.referenceCandidates.length>1)warnings.push('Hi ha diverses referències de compra. Comprova quina correspon a cada persona.');return {proposals,warnings,text:text.slice(0,80000),name,purchase,parserVersion:readerVersion,provider:airline?.provider||''}}
 export function recordsForPerson(trip,personId){return Object.entries(trip.readings||{}).flatMap(([path,r])=>{
   const confirmed=(r.confirmed||[]).filter(c=>c.personId===personId);
   const proposed=r.status!=='ignored'&&r.reviewedFingerprint!==r.fingerprint?(r.proposals||[]).filter(c=>c.personId===personId):[];
@@ -99,7 +109,10 @@ export function applyReview(trip,path,choices){const reading=trip.readings?.[pat
 // Materialize detected names immediately; itinerary associations still require review.
 export function syncDetectedParticipants(trip){
   let added=0,linked=0,unresolved=0,updated=0;
+  // Remove only untouched, automatically created labels from older readers.
+  for(const p of [...trip.people]){if(p.createdFromDocument&&!validName(p.name)&&(!p.ticket||p.ticket==='Pendent')&&(!p.checkin||p.checkin==='Pendent')&&!['origin','phone','arrival','pickup','parking','vehicle','notes'].some(k=>p[k])&&!Object.values(trip.readings||{}).some(r=>(r.confirmed||[]).some(c=>c.personId===p.id))){removeParticipant(trip,p.id);updated++;}}
   for(const [path,r] of Object.entries(trip.readings||{})){
+    if(r.status==='ready'&&r.text&&r.parserVersion!==readerVersion&&parseAirlineConfirmation(r.text)){const fresh=analyzeText({text:r.text,people:trip.people,name:r.name});Object.assign(r,fresh);updated++;}
     if(r.status==='reviewed'){for(const c of r.confirmed||[])c.purchase??=extractPurchase(r.text||'',c.segments||[]);updated+=syncPurchases(trip,path,r.confirmed||[],false);continue;}
     if(!['ready','unread'].includes(r.status)||r.reviewedFingerprint===r.fingerprint)continue;
     if(!r.proposals?.length&&r.text){r.proposals=proposeAssociations(r.text,trip.people);if(r.proposals.length)r.warnings=(r.warnings||[]).filter(w=>!w.startsWith('No s’ha identificat cap passatger'));}
@@ -108,7 +121,7 @@ export function syncDetectedParticipants(trip){
       if(!name||(r.dismissedNames||[]).includes(key)){unresolved++;continue;}
       let person=trip.people.find(p=>p.id===proposal.personId);
       if(!person){
-        const matches=trip.people.filter(p=>nameKey(p.name)===key);
+        const matches=matchingPeople(name,trip.people);
         if(matches.length>1){proposal.ambiguous=true;proposal.personId='';unresolved++;continue;}
         person=matches[0];
         if(!person){
@@ -117,7 +130,7 @@ export function syncDetectedParticipants(trip){
         }
       }
       if(proposal.personId!==person.id)linked++;
-      proposal.personId=person.id;proposal.ambiguous=false;
+      proposal.personId=person.id;proposal.ambiguous=false;if(nameKey(person.name)!==nameKey(name)){proposal.nameVariant=true;person.nameAliases=[...new Set([...(person.nameAliases||[]),name])];}
       proposal.purchase??=extractPurchase(r.text||'',proposal.segments||[]);
     }
     updated+=syncPurchases(trip,path,(r.proposals||[]).filter(p=>p.personId&&!p.ambiguous),true);
