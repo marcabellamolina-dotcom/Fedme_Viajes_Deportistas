@@ -4,7 +4,7 @@ export function rosterRows(tables){
  const result=new Map();
  for(const rows of tables){const at=rows.findIndex(row=>row.some(c=>['nom','nom i cognoms','nombre y apellidos','name','participant'].includes(normalize(c))));if(at<0)continue;
  const header=rows[at].map(normalize),col=aliases=>header.findIndex(h=>aliases.includes(h));
- const indexes={name:col(['nom','nom i cognoms','nombre y apellidos','name','participant']),role:col(['rol','role']),origin:col(['origen','origin']),phone:col(['telefon','telefono','phone']),notes:col(['observacions','notes'])};
+ const indexes={name:col(['nom','nom i cognoms','nombre y apellidos','name','participant']),role:col(['rol','role']),email:col(['email personal','email','correu electronic']),origin:col(['origen','origin']),phone:col(['telefon','telefono','phone']),notes:col(['observacions','notes'])};
  for(const row of rows.slice(at+1)){const values=Object.fromEntries(Object.entries(indexes).map(([k,i])=>[k,i<0?'':String(row[i]||'').trim()]));if(!values.name)continue;const key=nameKey(values.name);if(!key)continue;if(!result.has(key))result.set(key,values);}
  }
  if(!result.size)throw Error('No s’ha trobat cap participant. L’Excel ha de tenir una columna «Nom i cognoms».');
