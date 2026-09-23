@@ -125,7 +125,7 @@ export function syncTicketStatus(trip){
  return updated;
 }
 
-export function applyReview(trip,path,choices){const reading=trip.readings?.[path];if(!reading)throw Error('Torna a llegir el document abans de confirmar.');const draft=structuredClone(trip),r=draft.readings[path],confirmed=[];for(const choice of choices){if(!choice.enabled)continue;let person;if(choice.personId){person=draft.people.find(p=>p.id===choice.personId);if(!person)throw Error('Un participant seleccionat ja no existeix.')}else{const name=clean(choice.name);if(!name)throw Error('Indica el nom de cada participant nou.');const matches=draft.people.filter(p=>nameKey(p.name)===nameKey(name));if(matches.length>1)throw Error(`Hi ha més d’una persona amb el nom ${name}. Selecciona-la a la llista.`);person=matches[0];if(!person){person={id:crypto.randomUUID(),name,origin:'',phone:'',arrival:'',ticket:'Pendent',checkin:'Pendent',pickup:'',parking:'',vehicle:'',notes:''};draft.people.push(person)}}const segments=(choice.segments||[]).map(s=>Object.fromEntries(Object.entries(s).map(([k,v])=>[k,clean(v)]))).filter(s=>Object.values(s).some(Boolean));const purchase=purchaseValues(choice.purchase);if(purchase.email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(purchase.email))throw Error('Revisa el format de l’email de compra.');const prior=confirmed.find(c=>c.personId===person.id&&JSON.stringify(c.purchase)===JSON.stringify(purchase));if(prior){for(const s of segments)if(!prior.segments.some(x=>JSON.stringify(x)===JSON.stringify(s)))prior.segments.push(s)}else confirmed.push({personId:person.id,segments,purchase});}if(!confirmed.length)throw Error('Selecciona almenys una persona per associar el document.');syncPurchases(draft,path,confirmed,false);r.confirmed=confirmed;r.reviewedAt=Date.now();r.reviewedFingerprint=r.fingerprint;r.status='reviewed';syncJourneys(draft);return draft}
+export function applyReview(trip,path,choices){const reading=trip.readings?.[path];if(!reading)throw Error('Torna a llegir el document abans de confirmar.');const draft=structuredClone(trip),r=draft.readings[path],confirmed=[];for(const choice of choices){if(!choice.enabled)continue;let person;if(choice.personId){person=draft.people.find(p=>p.id===choice.personId);if(!person)throw Error('Un participant seleccionat ja no existeix.')}else{if(trip.rosterMode==='excel')throw Error('Selecciona un participant de l’Excel. Els documents no creen participants.');const name=clean(choice.name);if(!name)throw Error('Indica el nom de cada participant nou.');const matches=draft.people.filter(p=>nameKey(p.name)===nameKey(name));if(matches.length>1)throw Error(`Hi ha més d’una persona amb el nom ${name}. Selecciona-la a la llista.`);person=matches[0];if(!person){person={id:crypto.randomUUID(),name,origin:'',phone:'',arrival:'',ticket:'Pendent',checkin:'Pendent',pickup:'',parking:'',vehicle:'',notes:''};draft.people.push(person)}}const segments=(choice.segments||[]).map(s=>Object.fromEntries(Object.entries(s).map(([k,v])=>[k,clean(v)]))).filter(s=>Object.values(s).some(Boolean));const purchase=purchaseValues(choice.purchase);if(purchase.email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(purchase.email))throw Error('Revisa el format de l’email de compra.');const prior=confirmed.find(c=>c.personId===person.id&&JSON.stringify(c.purchase)===JSON.stringify(purchase));if(prior){for(const s of segments)if(!prior.segments.some(x=>JSON.stringify(x)===JSON.stringify(s)))prior.segments.push(s)}else confirmed.push({personId:person.id,segments,purchase});}if(!confirmed.length)throw Error('Selecciona almenys una persona per associar el document.');syncPurchases(draft,path,confirmed,false);r.confirmed=confirmed;r.reviewedAt=Date.now();r.reviewedFingerprint=r.fingerprint;r.status='reviewed';syncJourneys(draft);return draft}
 
 // Save detected participants and their document-backed journeys immediately; review remains available.
 export function syncDetectedParticipants(trip){
@@ -133,6 +133,7 @@ export function syncDetectedParticipants(trip){
   // Remove only untouched, automatically created labels from older readers.
   for(const p of [...trip.people]){if(p.createdFromDocument&&!validName(p.name)&&(!p.ticket||p.ticket==='Pendent')&&(!p.checkin||p.checkin==='Pendent')&&!['origin','phone','arrival','pickup','parking','vehicle','notes'].some(k=>p[k])&&!Object.values(trip.readings||{}).some(r=>(r.confirmed||[]).some(c=>c.personId===p.id))){removeParticipant(trip,p.id);updated++;}}
   for(const [path,r] of Object.entries(trip.readings||{})){
+    if(trip.rosterMode==='excel'&&r.name===trip.rosterSource)continue;
     if(r.status==='ready'&&r.text&&r.parserVersion!==readerVersion&&parseAirlineConfirmation(r.text)){const fresh=analyzeText({text:r.text,people:trip.people,name:r.name});Object.assign(r,fresh);updated++;}
     if(r.status==='reviewed'){for(const c of r.confirmed||[])c.purchase??=extractPurchase(r.text||'',c.segments||[]);updated+=syncPurchases(trip,path,r.confirmed||[],false);continue;}
     if(!['ready','unread'].includes(r.status)||r.reviewedFingerprint===r.fingerprint)continue;
@@ -146,12 +147,13 @@ export function syncDetectedParticipants(trip){
         if(matches.length>1){proposal.ambiguous=true;proposal.personId='';unresolved++;continue;}
         person=matches[0];
         if(!person){
+          if(trip.rosterMode==='excel'){proposal.personId='';proposal.unmatched=true;unresolved++;continue;}
           person={id:crypto.randomUUID(),name,origin:'',phone:'',arrival:'',ticket:'Pendent',checkin:'Pendent',pickup:'',parking:'',vehicle:'',notes:'',createdFromDocument:true};
           trip.people.push(person);added++;
         }
       }
       if(proposal.personId!==person.id)linked++;
-      proposal.personId=person.id;proposal.ambiguous=false;if(nameKey(person.name)!==nameKey(name)){proposal.nameVariant=true;person.nameAliases=[...new Set([...(person.nameAliases||[]),name])];}
+      proposal.personId=person.id;proposal.unmatched=false;proposal.ambiguous=false;if(nameKey(person.name)!==nameKey(name)){proposal.nameVariant=true;person.nameAliases=[...new Set([...(person.nameAliases||[]),name])];}
       proposal.purchase??=extractPurchase(r.text||'',proposal.segments||[]);
     }
     updated+=syncPurchases(trip,path,(r.proposals||[]).filter(p=>p.personId&&!p.ambiguous),true);
