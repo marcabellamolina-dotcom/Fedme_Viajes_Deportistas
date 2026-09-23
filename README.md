@@ -45,3 +45,5 @@ El lector distingeix les taules de passatgers de Vueling, easyJet i Wizz Air de 
 Validació local amb una carpeta de set PDF: sis reserves i tretze participants, sense duplicats en repetir la importació. Els documents reals no formen part del repositori ni del desplegament.
 
 Els trajectes detectats es guarden a cada participant i es mostren a la llista i a la fitxa. El resum del viatge inclou una graella amb comprovacions de trajectes, bitllet, check-in i recollida, amb filtres de pendents i accés directe a la gestió. L’aparcament es mostra com a informació, sense donar-lo per obligatori.
+
+Les confirmacions de reserva identificades amb localitzador i vols associats marquen automàticament el bitllet com a «OK · Comprat». Es respecten els canvis manuals. La casella Check-in obre les reserves amb localitzador, email i l’enllaç oficial de la companyia (easyJet, Vueling o Wizz Air), i permet guardar l’estat manual del check-in. Obrir el web de la companyia no canvia aquest estat.

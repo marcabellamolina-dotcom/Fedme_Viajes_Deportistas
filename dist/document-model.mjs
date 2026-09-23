@@ -110,7 +110,19 @@ export function journeysForPerson(trip,personId){
 export function syncJourneys(trip){
   let updated=0;
   for(const person of trip.people){const journeys=journeysForPerson(trip,person.id);if(JSON.stringify(person.journeys||[])!==JSON.stringify(journeys)){person.journeys=journeys;updated++;}}
+  updated+=syncTicketStatus(trip);
   return updated;
+}
+export function syncTicketStatus(trip){
+ let updated=0;
+ for(const person of trip.people){
+  if(person.ticketSource==='manual'||person.ticket==='No cal')continue;
+  const records=recordsForPerson(trip,person.id).filter(r=>r.reading.status!=='ignored'&&r.segments.some(s=>s.origin&&s.destination&&s.service));
+  const purchased=records.length>0&&records.every(r=>!r.stale&&!!(r.reading.provider||parseAirlineConfirmation(r.reading.text||'')?.provider)&&r.purchases.some(p=>p.reference));
+  if(purchased&&(!person.ticket||person.ticket==='Pendent'||person.ticketSource==='document')){if(person.ticket!=='Comprat'||person.ticketSource!=='document'){person.ticket='Comprat';person.ticketSource='document';updated++;}}
+  else if(!purchased&&person.ticketSource==='document'){person.ticket='Pendent';delete person.ticketSource;updated++;}
+ }
+ return updated;
 }
 
 export function applyReview(trip,path,choices){const reading=trip.readings?.[path];if(!reading)throw Error('Torna a llegir el document abans de confirmar.');const draft=structuredClone(trip),r=draft.readings[path],confirmed=[];for(const choice of choices){if(!choice.enabled)continue;let person;if(choice.personId){person=draft.people.find(p=>p.id===choice.personId);if(!person)throw Error('Un participant seleccionat ja no existeix.')}else{const name=clean(choice.name);if(!name)throw Error('Indica el nom de cada participant nou.');const matches=draft.people.filter(p=>nameKey(p.name)===nameKey(name));if(matches.length>1)throw Error(`Hi ha més d’una persona amb el nom ${name}. Selecciona-la a la llista.`);person=matches[0];if(!person){person={id:crypto.randomUUID(),name,origin:'',phone:'',arrival:'',ticket:'Pendent',checkin:'Pendent',pickup:'',parking:'',vehicle:'',notes:''};draft.people.push(person)}}const segments=(choice.segments||[]).map(s=>Object.fromEntries(Object.entries(s).map(([k,v])=>[k,clean(v)]))).filter(s=>Object.values(s).some(Boolean));const purchase=purchaseValues(choice.purchase);if(purchase.email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(purchase.email))throw Error('Revisa el format de l’email de compra.');const prior=confirmed.find(c=>c.personId===person.id&&JSON.stringify(c.purchase)===JSON.stringify(purchase));if(prior){for(const s of segments)if(!prior.segments.some(x=>JSON.stringify(x)===JSON.stringify(s)))prior.segments.push(s)}else confirmed.push({personId:person.id,segments,purchase});}if(!confirmed.length)throw Error('Selecciona almenys una persona per associar el document.');syncPurchases(draft,path,confirmed,false);r.confirmed=confirmed;r.reviewedAt=Date.now();r.reviewedFingerprint=r.fingerprint;r.status='reviewed';syncJourneys(draft);return draft}
