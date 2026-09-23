@@ -23,9 +23,12 @@ export async function handle(request,env){const url=new URL(request.url),path=ur
    }
    return json({error:'Mètode no permès.'},405);
   }
-  if(path==='/api/my-trips'&&request.method==='GET'){
-   const rows=await env.DB.prepare("SELECT id,payload,revision,updated_at FROM shared_trips WHERE EXISTS (SELECT 1 FROM json_each(shared_trips.payload,'$.people') p WHERE lower(json_extract(p.value,'$.email')) = ?)").bind(user.email).all();const trips=[];
-   for(const row of rows.results){for(const trip of personalView(JSON.parse(row.payload),user.email)){const f=await env.DB.prepare('SELECT seen_revision,checkin FROM participant_feedback WHERE trip_id=? AND person_id=?').bind(row.id,trip.person.id).first();trips.push({...trip,revision:row.revision,updatedAt:row.updated_at,feedback:f||{}});}}return json({trips});
+  if(path==='/api/my-trips'&&['GET','POST'].includes(request.method)){
+   let email=user.email;
+   if(request.method==='POST'){let body;try{body=await request.json()}catch{return json({error:'Indica un email vàlid.'},400)}email=personalEmail(body.email);if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return json({error:'Indica un email vàlid.'},400);if(email!==user.email&&!user.admin)return json({error:'Aquest email no coincideix amb la sessió. Entra amb el compte d’aquest email per veure el teu viatge.'},403);}
+   const preview=user.admin&&email!==user.email;
+   const rows=await env.DB.prepare("SELECT id,payload,revision,updated_at FROM shared_trips WHERE EXISTS (SELECT 1 FROM json_each(shared_trips.payload,'$.people') p WHERE lower(json_extract(p.value,'$.email')) = ?)").bind(email).all();const trips=[];
+   for(const row of rows.results){for(const trip of personalView(JSON.parse(row.payload),email)){const f=await env.DB.prepare('SELECT seen_revision,checkin FROM participant_feedback WHERE trip_id=? AND person_id=?').bind(row.id,trip.person.id).first();trips.push({...trip,revision:row.revision,updatedAt:row.updated_at,feedback:f||{}});}}return json({trips,preview});
   }
   const feedbackMatch=path.match(/^\/api\/my-trips\/([^/]+)\/feedback$/);
   if(feedbackMatch&&request.method==='POST'){const id=decodeURIComponent(feedbackMatch[1]),row=await env.DB.prepare('SELECT payload,revision FROM shared_trips WHERE id=?').bind(id).first();if(!row)return json({error:'Viatge no disponible.'},404);const own=personalView(JSON.parse(row.payload),user.email);if(own.length!==1)return json({error:'No tens accés a aquest viatge.'},403);const body=await request.json();if(body.revision!==row.revision)return json({error:'El viatge ha canviat. Actualitza’l abans de confirmar.'},409);if(body.action!=='seen'&&body.action!=='checkin')return json({error:'Acció no vàlida.'},400);if(body.action==='checkin'&&!['Pendent','Fet'].includes(body.checkin))return json({error:'Estat no vàlid.'},400);const now=new Date().toISOString(),personId=own[0].person.id;
