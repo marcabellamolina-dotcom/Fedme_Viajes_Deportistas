@@ -49,3 +49,13 @@ Els trajectes detectats es guarden a cada participant i es mostren a la llista i
 Les confirmacions de reserva identificades amb localitzador i vols associats marquen automàticament el bitllet com a «OK · Comprat». Es respecten els canvis manuals. La casella Check-in obre les reserves amb localitzador, email i l’enllaç oficial de la companyia (easyJet, Vueling o Wizz Air), i permet guardar l’estat manual del check-in. Obrir el web de la companyia no canvia aquest estat.
 
 Rols i transports: cada participant té un rol i una forma de viatjar independents. Els vehicles tenen conductor vinculat a un participant o extern, places de passatger, punt i hora de recollida. Les assignacions d’anada i tornada són independents. La vista d’itinerari individual és una vista local de coordinació; no és un portal compartit ni activa login. L’email personal es recull separadament de l’email de compra per preparar l’accés individual posterior.
+
+## Itineraris compartits i recollides
+
+El projecte publica un Worker amb D1 (`DB`). El backend comprova la identitat de Sites i només l’email configurat a `ADMIN_EMAIL` pot publicar itineraris. Les consultes del portal `/me` es filtren al servidor per l’email personal del participant; l’email de compra mai concedeix accés. La política privada de Sites continua vigent: els esportistes s’han d’autoritzar com a visitants del lloc.
+
+Des del resum, «Compartir itineraris» desa una projecció del viatge al servidor. Els canvis posteriors es sincronitzen; els conflictes de revisió no sobreescriuen dades. L’Excel original, els PDF, els permisos de carpeta i el text complet dels documents es queden al navegador. Les còpies locals de coordinació continuen disponibles i els itineraris compartits persisteixen a D1.
+
+El portal permet consultar vols, reserves/check-in, vehicles, recollides, allotjament i notes personals, confirmar la lectura de la versió vigent i indicar el check-in. Coordinació consulta aquestes confirmacions des del resum. «Recollides» agrupa arribades per aeroport, dia i franja d’una hora, omet connexions consecutives conegudes i permet assignar un grup a un vehicle respectant capacitat i sentit.
+
+Validació: `npm test` construeix el Worker i executa proves amb SQLite real per comprovar autorització, aïllament de participants, revocació per email, conflictes de revisió, confirmacions i recollides. `npm run db:generate` genera migracions Drizzle; `npm run build` prepara el Worker i els recursos del client.
