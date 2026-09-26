@@ -9,6 +9,7 @@
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
+    "@clerk/backend": "^3.20.1",
     "pdfjs-dist": "6.3.289",
     "tesseract.js": "7.0.0",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"

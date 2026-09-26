@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {allowedOrigins,verifiedIdentity,trustedRequest} from '../server/vercel-auth.mjs';
+const env={APP_URL:'https://travel.example',ADMIN_EMAIL:'admin@example.com'};
+const request=new Request('https://travel.example/api/me');
+function client(email='admin@example.com',verified=true,signedIn=true){return {authenticateRequest:async(req,options)=>{assert.deepEqual(options.authorizedParties,['https://travel.example']);return {isSignedIn:signedIn,toAuth:()=>({userId:'u1'})};},users:{getUser:async()=>({id:'u1',primaryEmailAddressId:'e1',emailAddresses:[{id:'e1',emailAddress:email,verification:{status:verified?'verified':'unverified'}}]})}};}
+test('only verified primary email grants administrator rights',async()=>{assert.equal((await verifiedIdentity(request,client(),env)).admin,true);assert.equal((await verifiedIdentity(request,client('athlete@example.com'),env)).admin,false);assert.equal(await verifiedIdentity(request,client('admin@example.com',false),env),null);assert.equal(await verifiedIdentity(request,client('admin@example.com',true,false),env),null);});
+test('missing admin configuration never makes a user administrator',async()=>{assert.equal((await verifiedIdentity(request,client(),{APP_URL:env.APP_URL})).admin,false);});
+test('identity supplied by client is removed before passing to existing API',()=>{const incoming=new Request(request,{headers:{'oai-authenticated-user-email':'admin@example.com','oai-authenticated-user-id':'forged','oai-other':'spoof'}});const sanitized=trustedRequest(incoming,{id:'real',email:'athlete@example.com'});assert.equal(sanitized.headers.get('oai-authenticated-user-email'),'athlete@example.com');assert.equal(sanitized.headers.get('oai-authenticated-user-id'),'real');assert.equal(sanitized.headers.get('oai-other'),null);});
+test('allowed origins come from configuration, not request headers',()=>{assert.deepEqual(allowedOrigins({VERCEL_PROJECT_PRODUCTION_URL:'travel.vercel.app'}),['https://travel.vercel.app']);});

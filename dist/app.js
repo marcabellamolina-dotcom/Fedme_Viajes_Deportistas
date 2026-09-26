@@ -1,3 +1,4 @@
+import {requireSession,signOut} from './auth.mjs';
 import {collectParticipants,assignParticipant} from './participants.mjs';
 import {pickupGroups,pickupsHTML} from './pickups.mjs';
 import {shareTrip,sharedFeedback,sharedPanel} from './shared-ui.mjs';
@@ -9,7 +10,7 @@ import {csvRecords,normalize,pendingItems} from './core.mjs';
 import {syncDetectedParticipants,removeParticipant} from './document-model.mjs';
 import {renderDashboard} from './trip-dashboard.mjs';
 import {createDocumentFeatures} from './document-ui.mjs';
-const sessionResponse=await fetch('/api/me',{cache:'no-store'});if(!sessionResponse.ok){location.assign('/signin-with-chatgpt?return_to=%2F');await new Promise(()=>{});}const sessionUser=await sessionResponse.json();if(!sessionUser.admin){location.replace('/me');await new Promise(()=>{});}
+const sessionUser=await requireSession();if(!sessionUser.admin){location.replace('/me');await new Promise(()=>{});}
 const $=s=>document.querySelector(s),uid=()=>crypto.randomUUID(),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let rosterTarget=null;
 let dashboardFilter='all';
@@ -95,3 +96,5 @@ try{state=await read('data','state')||{trips:[]};const upgraded=structuredClone(
 
 document.addEventListener('change',async e=>{const select=e.target.closest('[data-assign-participant]');if(!select||!select.value)return;select.disabled=true;try{const t=assignParticipant(state,select.dataset.assignParticipant,select.value);await persist();await syncDirectoryTrip(t);toast('Participant assignat a '+t.name);}catch(error){fail(error);render();}});
 document.addEventListener('input',e=>{if(e.target.id!=='participantSearch')return;const query=e.target.value.toLowerCase().trim();let count=0;document.querySelectorAll('[data-directory-row]').forEach(row=>{row.hidden=!row.dataset.search.includes(query);if(!row.hidden)count++;});$('#directoryEmpty').hidden=!!count;});
+
+document.querySelector('#adminSignOut').onclick=()=>signOut().catch(fail);

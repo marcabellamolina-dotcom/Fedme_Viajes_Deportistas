@@ -8,8 +8,8 @@ Les rutes `/admin` i `/me` apunten a les pàgines corresponents.
 
 Aquesta configuració resol la carpeta de sortida del desplegament, però encara
 no migra el backend: `server/worker.mjs` depèn de la identitat de Sites i de D1.
-Cal adaptar autenticació, API i persistència abans d'utilitzar Vercel amb usuaris
-reals. No s'han d'acceptar capçaleres d'identitat de Sites enviades pel client
+L’adaptador d’autenticació de Vercel es descriu més avall. Encara cal connectar
+la persistència abans de compartir itineraris amb usuaris reals. No s'han d'acceptar capçaleres d'identitat de Sites enviades pel client
 com a autenticació a Vercel. La integració amb Claude també està pendent;
 guardar `ANTHROPIC_API_KEY` per si sol no l'activa.
 
@@ -72,3 +72,24 @@ Des del resum, «Compartir itineraris» desa una projecció del viatge al servid
 El portal permet consultar vols, reserves/check-in, vehicles, recollides, allotjament i notes personals, confirmar la lectura de la versió vigent i indicar el check-in. Coordinació consulta aquestes confirmacions des del resum. «Recollides» agrupa arribades per aeroport, dia i franja d’una hora, omet connexions consecutives conegudes i permet assignar un grup a un vehicle respectant capacitat i sentit.
 
 Validació: `npm test` construeix el Worker i executa proves amb SQLite real per comprovar autorització, aïllament de participants, revocació per email, conflictes de revisió, confirmacions i recollides. `npm run db:generate` genera migracions Drizzle; `npm run build` prepara el Worker i els recursos del client.
+
+### Accés per email a Vercel
+
+L'accés de Vercel utilitza Clerk. Configurar `CLERK_PUBLISHABLE_KEY`,
+`CLERK_SECRET_KEY`, `ADMIN_EMAIL` i `APP_URL` al projecte Vercel.
+Les claus secretes no es publiquen al client. A Clerk, activar email i codi
+per email per a entrada i registre, desactivar contrasenyes i els altres
+mètodes si es vol una única opció. Configurar el domini de producció a Clerk
+abans d'utilitzar claus de producció. No reutilitzar claus d'altres projectes.
+
+`/sign-in` mostra l'accés; les rutes antigues de ChatGPT hi redirigeixen.
+L'API verifica la sessió amb Clerk i obté l'email principal verificat al servidor.
+Només `ADMIN_EMAIL` concedeix gestió. Les capçaleres d'identitat del navegador
+s'eliminen abans d'invocar l'API heretada. Els esportistes entren directament a
+`/me` sense haver de tornar a escriure l'email.
+
+Pendent: connexió d'una base de dades compartida a Vercel. Les operacions de
+viatges compartits retornen 503 mentre no estigui connectada; no es fa servir
+memòria temporal com a substitut de persistència. La gestió local del navegador
+continua disponible per a l'administrador autenticat. L'enviament real de codis
+requereix configurar Clerk; les proves automatitzades no envien correus.

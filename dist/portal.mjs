@@ -1,8 +1,10 @@
+import {authFetch,requireSession,signOut} from './auth.mjs';
+const portalUser=await requireSession();
 import {dateParts} from './pickups.mjs';
 import {checkinLinks} from './checkin.mjs';
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));let trips=[],selectedEmail='',preview=false;
 const message=s=>document.querySelector('#portalMessage').textContent=s;
-async function api(path,options){const response=await fetch(path,{...options,headers:{'Content-Type':'application/json'},cache:'no-store'});const result=await response.json();if(!response.ok)throw Error(result.error||'No s’ha pogut carregar.');return result;}
+async function api(path,options){const response=await authFetch(path,{...options,headers:{'Content-Type':'application/json'},cache:'no-store'});const result=await response.json();if(!response.ok)throw Error(result.error||'No s’ha pogut carregar.');return result;}
 function flightPickup(segment,trip){
  const date=dateParts(segment.departure).date,start=dateParts(trip.start).date,end=dateParts(trip.end).date;
  const direction=segment.direction||(date&&date===start?'Anada':date&&date===end?'Tornada':'');
@@ -24,8 +26,10 @@ function render(){document.querySelector('#portal').innerHTML=trips.length?trips
 async function load(){if(!selectedEmail)return;const data=await api('/api/my-trips',{method:'POST',body:JSON.stringify({email:selectedEmail})});trips=data.trips;preview=!!data.preview;render();document.querySelector('#emailEntry').hidden=!!trips.length;document.querySelector('#changeEmail').hidden=!trips.length;document.querySelector('#previewNotice').hidden=!preview;document.querySelector('#refreshPortal').hidden=!trips.length;if(preview)document.querySelectorAll('#portal [data-action]').forEach(b=>b.disabled=true);}
 document.addEventListener('click',async event=>{const b=event.target.closest('[data-action]');if(!b||preview)return;const trip=trips.find(t=>t.id===b.dataset.id);if(!trip)return;b.disabled=true;try{await api('/api/my-trips/'+encodeURIComponent(trip.id)+'/feedback',{method:'POST',body:JSON.stringify({action:b.dataset.action,revision:trip.revision,checkin:(trip.feedback.checkin||trip.person.checkin)==='Fet'?'Pendent':'Fet'})});await load();message('Confirmació guardada.')}catch(e){message(e.message);b.disabled=false}});
 document.querySelector('#emailForm').onsubmit=async event=>{event.preventDefault();const button=document.querySelector('#emailSubmit');selectedEmail=document.querySelector('#athleteEmail').value.trim().toLowerCase();trips=[];preview=false;document.querySelector('#portal').innerHTML='';document.querySelector('#refreshPortal').hidden=true;document.querySelector('#previewNotice').hidden=true;message('Buscant el teu viatge…');button.disabled=true;try{await load();message('')}catch(e){message(e.message)}finally{button.disabled=false}};
-api('/api/me').then(user=>{document.querySelector('#sessionHint').textContent=user.admin?'Coordinació: pots consultar la vista prèvia introduint l’email d’un participant.':'Sessió verificada: '+user.email;}).catch(e=>message(e.message));
+Promise.resolve(portalUser).then(async user=>{document.querySelector('#sessionHint').textContent=user.admin?'Coordinació: pots consultar la vista prèvia introduint l’email d’un participant.':'Sessió verificada: '+user.email;if(!user.admin){selectedEmail=user.email;await load();}}).catch(e=>message(e.message));
 
 document.querySelector('#refreshPortal').onclick=()=>load().then(()=>message('Viatge actualitzat.')).catch(e=>message(e.message));
 
 document.querySelector('#changeEmail').onclick=()=>{document.querySelector('#emailEntry').hidden=false;document.querySelector('#athleteEmail').focus();};
+
+document.querySelectorAll('[data-signout]').forEach(a=>a.onclick=event=>{event.preventDefault();signOut().catch(e=>message(e.message));});

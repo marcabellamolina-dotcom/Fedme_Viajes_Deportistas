@@ -4,7 +4,29 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist/client",
   "rewrites": [
-    { "source": "/admin", "destination": "/index.html" },
-    { "source": "/me", "destination": "/portal.html" }
+    {
+      "source": "/admin",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/me",
+      "destination": "/portal.html"
+    },
+    {
+      "source": "/sign-in",
+      "destination": "/sign-in.html"
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/signin-with-chatgpt",
+      "destination": "/sign-in",
+      "permanent": false
+    },
+    {
+      "source": "/signout-with-chatgpt",
+      "destination": "/sign-in?signout=1",
+      "permanent": false
+    }
   ]
 }
