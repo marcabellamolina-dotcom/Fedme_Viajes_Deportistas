@@ -1,5 +1,18 @@
 # Equip · Viatges
 
+## Migració a Vercel
+
+`vercel.json` configura `npm run build` i publica exclusivament `dist/client`.
+No s'ha de publicar `dist` sencer: també conté el Worker i les metadades de Sites.
+Les rutes `/admin` i `/me` apunten a les pàgines corresponents.
+
+Aquesta configuració resol la carpeta de sortida del desplegament, però encara
+no migra el backend: `server/worker.mjs` depèn de la identitat de Sites i de D1.
+Cal adaptar autenticació, API i persistència abans d'utilitzar Vercel amb usuaris
+reals. No s'han d'acceptar capçaleres d'identitat de Sites enviades pel client
+com a autenticació a Vercel. La integració amb Claude també està pendent;
+guardar `ANTHROPIC_API_KEY` per si sol no l'activa.
+
 Backoffice en català per a viatges d'esquí i ciclisme. Web estàtica; les dades i els documents romanen al navegador de l'usuari.
 
 ## Carpetes i documents
