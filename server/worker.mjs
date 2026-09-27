@@ -13,13 +13,13 @@ export async function handle(request,env){const url=new URL(request.url),path=ur
   if(path==='/api/admin/trips'&&request.method==='GET'){if(!user.admin)return json({error:'Només coordinació.'},403);const rows=await env.DB.prepare('SELECT id, revision, updated_at FROM shared_trips').all();return json({trips:rows.results});}
   const adminMatch=path.match(/^\/api\/admin\/trips\/([^/]+)$/);
   if(adminMatch){if(!user.admin)return json({error:'Només coordinació.'},403);const id=decodeURIComponent(adminMatch[1]);
-   if(request.method==='GET'){const row=await env.DB.prepare('SELECT id, revision, updated_at FROM shared_trips WHERE id = ?').bind(id).first();const feedback=await env.DB.prepare('SELECT person_id, seen_revision, checkin, updated_at FROM participant_feedback WHERE trip_id = ?').bind(id).all();return json({trip:row,feedback:feedback.results});}
+   if(request.method==='GET'){const row=await env.DB.prepare('SELECT id, payload, revision, updated_at FROM shared_trips WHERE id = ?').bind(id).first();const feedback=await env.DB.prepare('SELECT person_id, seen_revision, checkin, updated_at FROM participant_feedback WHERE trip_id = ?').bind(id).all();return json({trip:row?{id:row.id,revision:row.revision,updated_at:row.updated_at,snapshot:JSON.parse(row.payload)}:null,feedback:feedback.results});}
    if(request.method==='PUT'){
     const raw=await request.text();if(raw.length>3000000)return json({error:'El viatge és massa gran.'},413);let body;try{body=JSON.parse(raw);validateSnapshot(body.trip);}catch(e){return json({error:e.message||'Dades no vàlides.'},400)}if(body.trip.id!==id||!Number.isInteger(body.expectedRevision)||body.expectedRevision<0)return json({error:'Revisió no vàlida.'},400);
     const now=new Date().toISOString(),payload=JSON.stringify(body.trip),expected=body.expectedRevision;let result;
     if(expected===0)result=await env.DB.prepare('INSERT INTO shared_trips (id,payload,revision,updated_at) VALUES (?,?,1,?) ON CONFLICT(id) DO NOTHING RETURNING revision').bind(id,payload,now).first();
     else result=await env.DB.prepare('UPDATE shared_trips SET payload = ?, revision = revision + 1, updated_at = ? WHERE id = ? AND revision = ? RETURNING revision').bind(payload,now,id,expected).first();
-    if(!result)return json({error:'El viatge compartit ha canviat des d’un altre navegador. Revisa la versió compartida abans de tornar a publicar.'},409);return json({revision:result.revision,updatedAt:now});
+    if(!result)return json({error:'La versión compartida no coincide con la de este navegador. Revisa las dos versiones antes de publicar.'},409);return json({revision:result.revision,updatedAt:now});
    }
    return json({error:'Mètode no permès.'},405);
   }
