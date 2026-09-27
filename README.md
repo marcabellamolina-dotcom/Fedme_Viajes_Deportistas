@@ -93,3 +93,12 @@ viatges compartits retornen 503 mentre no estigui connectada; no es fa servir
 memòria temporal com a substitut de persistència. La gestió local del navegador
 continua disponible per a l'administrador autenticat. L'enviament real de codis
 requereix configurar Clerk; les proves automatitzades no envien correus.
+
+### Base de dades compartida a Vercel
+
+Connectar una base Turso del projecte amb `TURSO_DATABASE_URL` i
+`TURSO_AUTH_TOKEN`. El servidor inicialitza les dues taules de compartició
+amb `CREATE TABLE IF NOT EXISTS` sense esborrar dades. L’adaptador manté les
+comprovacions d’email i revisió de l’API existent. Els viatges guardats al
+navegador s’han de publicar amb «Compartir viatge». No migra automàticament
+les dades de l’antic Sites, ni puja els documents originals.

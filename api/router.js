@@ -1,3 +1,4 @@
+import {sharedDatabase} from '../server/database.mjs';
 import {createClerkClient} from '@clerk/backend';
 import worker from '../dist/server/index.js';
 import {allowedOrigins,verifiedIdentity,trustedRequest} from '../server/vercel-auth.mjs';
@@ -24,7 +25,9 @@ export default async function handler(req,res){
   const user=await verifiedIdentity(request,client,env);
   if(!user)return json(401,{error:'Inicia sessió per continuar.'});
   if(path==='/api/me')return json(200,{email:user.email,admin:user.admin});
-  const response=await worker.fetch(trustedRequest(request,user),{ADMIN_EMAIL:env.ADMIN_EMAIL});
+  let DB;try{DB=await sharedDatabase(env);}catch{return json(503,{error:'No s’ha pogut connectar amb l’espai compartit. Torna-ho a provar.'});}
+  if(!DB)return json(503,{error:user.admin?'Falta connectar la base de dades del projecte a Vercel. Les dades locals es conserven.':'L’espai compartit encara s’està preparant. Contacta amb coordinació.'});
+  const response=await worker.fetch(trustedRequest(request,user),{ADMIN_EMAIL:env.ADMIN_EMAIL,DB});
   res.status(response.status);response.headers.forEach((value,key)=>res.setHeader(key,value));res.send(await response.text());
  }catch{json(503,{error:'No s’ha pogut verificar la sessió. Torna-ho a provar.'});}
 }
