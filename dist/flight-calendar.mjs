@@ -1,0 +1,26 @@
+import {dateParts} from './pickups.mjs';
+import {flightCheckin} from './checkin.mjs';
+const zones={BCN:'Europe/Madrid',MAD:'Europe/Madrid',BIO:'Europe/Madrid',AGP:'Europe/Madrid',GRX:'Europe/Madrid',VLC:'Europe/Madrid',ALC:'Europe/Madrid',PMI:'Europe/Madrid',GRO:'Europe/Madrid',SVQ:'Europe/Madrid',MXP:'Europe/Rome',LIN:'Europe/Rome',BGY:'Europe/Rome',FCO:'Europe/Rome',VCE:'Europe/Rome',TRN:'Europe/Rome',ZRH:'Europe/Zurich',GVA:'Europe/Zurich',LYS:'Europe/Paris',CDG:'Europe/Paris',ORY:'Europe/Paris',MUC:'Europe/Berlin',FRA:'Europe/Berlin',INN:'Europe/Vienna',VIE:'Europe/Vienna',LHR:'Europe/London',LGW:'Europe/London',LIS:'Europe/Lisbon',OPO:'Europe/Lisbon',LPA:'Atlantic/Canary',TFS:'Atlantic/Canary',TFN:'Atlantic/Canary'};
+const aliases={barcelona:'BCN',bilbao:'BIO',malaga:'AGP',granada:'GRX','milan malpensa':'MXP','milano malpensa':'MXP','milan malpensa - terminal 1':'MXP'};
+export function airportZone(value){const v=String(value||'').trim();return zones[v.toUpperCase()]||zones[v.match(/\(([A-Z]{3})\)/)?.[1]]||zones[aliases[v.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()]]||'';}
+const stamp=date=>date.toISOString().replace(/[-:]/g,'').replace(/\.\d{3}Z$/,'Z');
+function localParts(date,zone){const parts=new Intl.DateTimeFormat('en-GB',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(date);const p=Object.fromEntries(parts.map(x=>[x.type,x.value]));return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;}
+export function flightInstant(value,airport){
+ const p=dateParts(value),zone=airportZone(airport);if(!/^\d{4}-\d{2}-\d{2}$/.test(p.date)||!p.time||!zone)throw Error('Falta confirmar la fecha, la hora o la zona horaria del aeropuerto.');
+ const target=p.date+'T'+p.time,base=new Date(target+':00Z');if(!Number.isFinite(+base)||base.toISOString().slice(0,16)!==target)throw Error('La fecha u hora del vuelo no es válida.');
+ // Test surrounding offsets, including both sides of daylight-saving transitions.
+ const offsets=new Set([-86400000,0,86400000].map(delta=>{const d=new Date(+base+delta);return +new Date(localParts(d,zone)+':00Z')-d.getTime();}));
+ const matches=[...offsets].map(offset=>new Date(+base-offset)).filter(d=>localParts(d,zone)===target);
+ if(matches.length!==1)throw Error('El horario coincide con un cambio de hora y necesita revisión.');return matches[0];
+}
+export function calendarAvailability(segment){try{const start=flightInstant(segment.departure,segment.origin);if(segment.arrival){const end=flightInstant(segment.arrival,segment.destination);if(end<=start)throw Error('La llegada debe ser posterior a la salida.');}return {ready:true,start};}catch(error){return {ready:false,reason:error.message};}}
+const escape=s=>String(s??'').replace(/\\/g,'\\\\').replace(/\r\n|\r|\n/g,'\\n').replace(/;/g,'\\;').replace(/,/g,'\\,');
+function fold(line){const out=[];let current='',size=0;for(const char of line){const bytes=new TextEncoder().encode(char).length;if(size+bytes>75){out.push(current);current=' ';size=1;}current+=char;size+=bytes;}out.push(current);return out.join('\r\n');}
+export function flightCalendar(trip,segment,index=0,now=new Date()){
+ const availability=calendarAvailability(segment);if(!availability.ready)throw Error(availability.reason);
+ const checkin=flightCheckin(segment,trip.person.bookings||[]),end=segment.arrival?flightInstant(segment.arrival,segment.destination):null;
+ const description=[trip.name,`Localizador: ${segment.reference||'Pendiente'}`,`Salida (hora local): ${segment.departure}`,`Llegada (hora local): ${segment.arrival||'Pendiente'}`,`Equipaje: ${segment.baggage||'Pendiente de confirmar'}`,checkin.url?`Hacer check-in: ${checkin.url}`:'',`Alojamiento: ${[trip.hotel,trip.hotelAddress].filter(Boolean).join(', ')||'Pendiente'}`,'Consulta el portal antes de viajar: los cambios no se sincronizan automáticamente.'].filter(Boolean).join('\n');
+ const uid=[trip.id,trip.person.id,segment.service||'vuelo',dateParts(segment.departure).date,segment.origin,segment.destination,index].map(encodeURIComponent).join('-')+'@fedme-viajes';
+ const lines=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//FEDME Viajes//Calendario//ES','CALSCALE:GREGORIAN','BEGIN:VEVENT','UID:'+uid,'DTSTAMP:'+stamp(now),'DTSTART:'+stamp(availability.start),...(end?['DTEND:'+stamp(end)]:[]),'SUMMARY:'+escape(`Vuelo ${segment.service||''} · ${segment.origin} → ${segment.destination}`),'LOCATION:'+escape(segment.origin),'DESCRIPTION:'+escape(description),'CLASS:PRIVATE','BEGIN:VALARM','TRIGGER:-PT23H','ACTION:DISPLAY','DESCRIPTION:'+escape(`Hacer check-in · ${segment.service||'Vuelo'} · ${segment.origin} → ${segment.destination}${segment.reference?' · Localizador '+segment.reference:''}`),'END:VALARM','END:VEVENT','END:VCALENDAR'];return lines.map(fold).join('\r\n')+'\r\n';
+}
+export function calendarButton(trip,segment,index,esc){const available=calendarAvailability(segment);return `<div class="flight-calendar"><button type="button" class="button secondary" data-calendar-trip="${esc(trip.id)}" data-calendar-flight="${index}" ${available.ready?'':'disabled'}>Añadir al calendario</button><small>${available.ready?'Incluye aviso para hacer check-in 23 h antes. Abre el archivo y guarda el evento en tu calendario.':esc(available.reason)}</small></div>`;}
