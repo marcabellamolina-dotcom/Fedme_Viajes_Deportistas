@@ -1,3 +1,4 @@
+import {isPublicAthleteRequest} from '../server/athlete-access.mjs';
 import {sharedDatabase} from '../server/database.mjs';
 import {createClerkClient} from '@clerk/backend';
 import worker from '../dist/server/index.js';
@@ -13,7 +14,8 @@ export default async function handler(req,res){
   incoming.searchParams.delete('__route');
   const requestPath=path+(incoming.searchParams.size?'?'+incoming.searchParams.toString():'');
   if(path==='/api/auth/config')return json(200,{provider:'clerk',publishableKey:env.CLERK_PUBLISHABLE_KEY||'',ready:!!(env.CLERK_PUBLISHABLE_KEY&&env.CLERK_SECRET_KEY&&env.ADMIN_EMAIL)});
-  if(!env.CLERK_PUBLISHABLE_KEY||!env.CLERK_SECRET_KEY||!env.ADMIN_EMAIL)return json(503,{error:'L’accés per email encara s’està configurant.'});
+  const publicAthlete=isPublicAthleteRequest(path,req.method);
+  if(!publicAthlete&&(!env.CLERK_PUBLISHABLE_KEY||!env.CLERK_SECRET_KEY||!env.ADMIN_EMAIL))return json(503,{error:'L’accés per email encara s’està configurant.'});
   const origins=allowedOrigins(env),host=req.headers.host;
   const origin=origins.find(o=>new URL(o).host===host);
   if(!origin)return json(403,{error:'Origen no permès.'});
@@ -21,13 +23,14 @@ export default async function handler(req,res){
   const options={method:req.method,headers};
   if(!['GET','HEAD'].includes(req.method))options.body=typeof req.body==='string'?req.body:JSON.stringify(req.body||{});
   const request=new Request(origin+requestPath,options);
-  const client=createClerkClient({secretKey:env.CLERK_SECRET_KEY,publishableKey:env.CLERK_PUBLISHABLE_KEY});
-  const user=await verifiedIdentity(request,client,env);
-  if(!user)return json(401,{error:'Inicia sessió per continuar.'});
+  let user;
+  if(!publicAthlete){const client=createClerkClient({secretKey:env.CLERK_SECRET_KEY,publishableKey:env.CLERK_PUBLISHABLE_KEY});
+  user=await verifiedIdentity(request,client,env);
+  if(!user)return json(401,{error:'Inicia sessió per continuar.'});}
   if(path==='/api/me')return json(200,{email:user.email,admin:user.admin});
   let DB;try{DB=await sharedDatabase(env);}catch{return json(503,{error:'No s’ha pogut connectar amb l’espai compartit. Torna-ho a provar.'});}
-  if(!DB)return json(503,{error:user.admin?'Falta connectar la base de dades del projecte a Vercel. Les dades locals es conserven.':'L’espai compartit encara s’està preparant. Contacta amb coordinació.'});
-  const response=await worker.fetch(trustedRequest(request,user),{ADMIN_EMAIL:env.ADMIN_EMAIL,DB});
+  if(!DB)return json(503,{error:user?.admin?'Falta connectar la base de dades del projecte a Vercel. Les dades locals es conserven.':'L’espai compartit encara s’està preparant. Contacta amb coordinació.'});
+  const response=await worker.fetch(publicAthlete?request:trustedRequest(request,user),{ADMIN_EMAIL:env.ADMIN_EMAIL,DB});
   res.status(response.status);response.headers.forEach((value,key)=>res.setHeader(key,value));res.send(await response.text());
  }catch{json(503,{error:'No s’ha pogut verificar la sessió. Torna-ho a provar.'});}
 }

@@ -44,3 +44,9 @@
 .trip-logo{display:block;width:160px;max-width:100%;height:auto;object-fit:contain;background:white;padding:10px;border-radius:6px;margin:0 0 16px}.trip-top .trip-logo{width:110px;margin:0}.portal article>.trip-logo{width:190px;margin-bottom:20px}
 
 .version-comparison{white-space:pre-wrap;overflow-wrap:anywhere;max-height:300px;overflow:auto;font:14px/1.5 monospace}
+
+#portalBrand{display:flex;align-items:center;gap:18px}#portalBrand .trip-logo{width:190px;margin:0} @media(max-width:600px){#portalBrand{align-items:flex-start;flex-direction:column;gap:8px}#portalBrand .trip-logo{width:160px}}
+
+.flight-baggage{color:#a71919;background:#fff1f1;border:1px solid #efb7b7;border-left:4px solid #be2525;border-radius:8px;padding:14px;margin:10px 0;white-space:normal}.flight-baggage strong{display:block}.flight-baggage p{margin:8px 0 0;font-weight:600}.flight-extras{min-width:0;flex:1}
+
+.flight-checkin{margin-bottom:14px}.flight-checkin-button{display:flex!important;flex-direction:column;justify-content:center;align-items:center;width:100%;min-height:70px;background:#125c3a!important;color:white!important;font-size:20px!important;font-weight:800!important;border:2px solid #0b4429!important;box-shadow:0 3px 0 #0b4429;text-decoration:none}.flight-checkin-button small{font-size:13px;font-weight:500}.flight-checkin-button:hover{background:#0b4429!important}.flight-checkin-button:focus-visible{outline:3px solid #d59400;outline-offset:4px}.flight-checkin p{font-size:13px;overflow-wrap:anywhere}.flight-checkin>small{display:block;margin-top:10px;color:#4b5550}

@@ -1,10 +1,12 @@
+import {isPublicAthleteRequest,athleteEmailIdentity,upcomingTrip} from './athlete-access.mjs';
 import adminHTML from '../dist/index.html';
 import portalHTML from '../dist/portal.html';
 import {validateSnapshot,personalView,personalEmail} from '../dist/shared-trip.mjs';
 const json=(data,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});
 const html=body=>new Response(body,{headers:{'content-type':'text/html;charset=utf-8','cache-control':'private, no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'same-origin'}});
 export function identity(request,env){const id=request.headers.get('oai-authenticated-user-id'),email=personalEmail(request.headers.get('oai-authenticated-user-email'));if(!id||!email)return null;return {id,email,admin:!!env.ADMIN_EMAIL&&email===personalEmail(env.ADMIN_EMAIL)};}
-export async function handle(request,env){const url=new URL(request.url),path=url.pathname,user=identity(request,env);
+export async function handle(request,env){const url=new URL(request.url),path=url.pathname;let user=identity(request,env);
+ if(isPublicAthleteRequest(path,request.method)){try{user=await athleteEmailIdentity(request)}catch(error){return json({error:error.message},400)}}
  if(path.startsWith('/api/')){
   if(!user)return json({error:'Inicia sessió per continuar.'},401);
   if(request.method!=='GET'&&(request.headers.get('origin')!==url.origin||request.headers.get('sec-fetch-site')==='cross-site'))return json({error:'Origen no permès.'},403);
@@ -28,7 +30,7 @@ export async function handle(request,env){const url=new URL(request.url),path=ur
    if(request.method==='POST'){let body;try{body=await request.json()}catch{return json({error:'Indica un email vàlid.'},400)}email=personalEmail(body.email);if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return json({error:'Indica un email vàlid.'},400);if(email!==user.email&&!user.admin)return json({error:'Aquest email no coincideix amb la sessió. Entra amb el compte d’aquest email per veure el teu viatge.'},403);}
    const preview=user.admin&&email!==user.email;
    const rows=await env.DB.prepare("SELECT id,payload,revision,updated_at FROM shared_trips WHERE EXISTS (SELECT 1 FROM json_each(shared_trips.payload,'$.people') p WHERE lower(json_extract(p.value,'$.email')) = ?)").bind(email).all();const trips=[];
-   for(const row of rows.results){for(const trip of personalView(JSON.parse(row.payload),email)){const f=await env.DB.prepare('SELECT seen_revision,checkin FROM participant_feedback WHERE trip_id=? AND person_id=?').bind(row.id,trip.person.id).first();trips.push({...trip,revision:row.revision,updatedAt:row.updated_at,feedback:f||{}});}}return json({trips,preview});
+   for(const row of rows.results){const snapshot=JSON.parse(row.payload);if(!upcomingTrip(snapshot))continue;for(const trip of personalView(snapshot,email)){const f=await env.DB.prepare('SELECT seen_revision,checkin FROM participant_feedback WHERE trip_id=? AND person_id=?').bind(row.id,trip.person.id).first();trips.push({...trip,revision:row.revision,updatedAt:row.updated_at,feedback:f||{}});}}trips.sort((a,b)=>String(a.start||'9999').localeCompare(String(b.start||'9999')));return json({trips,preview});
   }
   const feedbackMatch=path.match(/^\/api\/my-trips\/([^/]+)\/feedback$/);
   if(feedbackMatch&&request.method==='POST'){const id=decodeURIComponent(feedbackMatch[1]),row=await env.DB.prepare('SELECT payload,revision FROM shared_trips WHERE id=?').bind(id).first();if(!row)return json({error:'Viatge no disponible.'},404);const own=personalView(JSON.parse(row.payload),user.email);if(own.length!==1)return json({error:'No tens accés a aquest viatge.'},403);const body=await request.json();if(body.revision!==row.revision)return json({error:'El viatge ha canviat. Actualitza’l abans de confirmar.'},409);if(body.action!=='seen'&&body.action!=='checkin')return json({error:'Acció no vàlida.'},400);if(body.action==='checkin'&&!['Pendent','Fet'].includes(body.checkin))return json({error:'Estat no vàlid.'},400);const now=new Date().toISOString(),personId=own[0].person.id;
@@ -37,7 +39,8 @@ export async function handle(request,env){const url=new URL(request.url),path=ur
   }
   return json({error:'No trobat.'},404);
  }
- if(path==='/'||path==='/index.html'||path==='/me'||path==='/me/'){
+ if(path==='/me'||path==='/me/')return html(portalHTML);
+ if(path==='/'||path==='/index.html'){
   if(!user)return Response.redirect(url.origin+'/signin-with-chatgpt?return_to='+encodeURIComponent(path==='/me/'?'/me':path),302);
   return html(path.startsWith('/me')||!user.admin?portalHTML:adminHTML);
  }

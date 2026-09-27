@@ -1,6 +1,7 @@
+import {baggageForFlight} from './baggage.mjs';
 import {parseAirlineConfirmation} from './airline-parser.mjs';
 import {normalize,parseCSV} from './core.mjs';
-export const readerVersion=3;
+export const readerVersion=4;
 export const fingerprint=f=>`${readerVersion}:${f.path}:${f.size}:${f.modified}`;
 export const needsReading=(file,reading)=>!reading||reading.fingerprint!==fingerprint(file)||['error','unread'].includes(reading.status);
 const clean=s=>String(s??'').replace(/\s+/g,' ').trim();
@@ -95,7 +96,7 @@ export function proposeAssociations(text,people=[],tables=[]){
   }}
   return [...merged.values()];
 }
-export function analyzeText({text,people,tables=[],name=''}){const proposals=proposeAssociations(text,people,tables);const warnings=[];if(!text.trim())warnings.push('No s’ha pogut extreure text. Assigna el document manualment.');else if(!proposals.length)warnings.push('No s’ha identificat cap passatger amb prou informació. Selecciona’l manualment.');if(proposals.some(p=>p.ambiguous))warnings.push('Hi ha participants amb el mateix nom. Tria la persona correcta.');const airline=!tables.length?parseAirlineConfirmation(text):null;const purchase=airline?.purchase||extractPurchase(text);if(airline)warnings.push(...airline.warnings);if(purchase.emailCandidates.length>1)warnings.push('Hi ha més d’un email de compra. Selecciona el correcte per a cada persona.');if(purchase.referenceCandidates.length>1)warnings.push('Hi ha diverses referències de compra. Comprova quina correspon a cada persona.');return {proposals,warnings,text:text.slice(0,80000),name,purchase,parserVersion:readerVersion,provider:airline?.provider||''}}
+export function analyzeText({text,layoutText='',people,tables=[],name=''}){const proposals=proposeAssociations(text,people,tables);const warnings=[];if(!text.trim())warnings.push('No s’ha pogut extreure text. Assigna el document manualment.');else if(!proposals.length)warnings.push('No s’ha identificat cap passatger amb prou informació. Selecciona’l manualment.');if(proposals.some(p=>p.ambiguous))warnings.push('Hi ha participants amb el mateix nom. Tria la persona correcta.');const airline=!tables.length?parseAirlineConfirmation(text):null;const purchase=airline?.purchase||extractPurchase(text);if(airline)warnings.push(...airline.warnings);if(purchase.emailCandidates.length>1)warnings.push('Hi ha més d’un email de compra. Selecciona el correcte per a cada persona.');if(purchase.referenceCandidates.length>1)warnings.push('Hi ha diverses referències de compra. Comprova quina correspon a cada persona.');for(const p of proposals)for(const segment of p.segments)segment.baggage=baggageForFlight(layoutText||text,p.name,segment,p.segments,proposals.map(p=>p.name));return {layoutText:layoutText.slice(0,80000),proposals,warnings,text:text.slice(0,80000),name,purchase,parserVersion:readerVersion,provider:airline?.provider||''}}
 export function recordsForPerson(trip,personId){return Object.entries(trip.readings||{}).flatMap(([path,r])=>{
   const confirmed=(r.confirmed||[]).filter(c=>c.personId===personId);
   const proposed=r.status!=='ignored'&&r.reviewedFingerprint!==r.fingerprint?(r.proposals||[]).filter(c=>c.personId===personId):[];
@@ -105,7 +106,7 @@ export function recordsForPerson(trip,personId){return Object.entries(trip.readi
 })}
 
 export function journeysForPerson(trip,personId){
-  return recordsForPerson(trip,personId).flatMap(r=>r.segments.filter(s=>s.origin||s.destination||s.departure||s.arrival).map(s=>({...s,documentPath:r.path,pending:r.pending,stale:r.stale})));
+  return recordsForPerson(trip,personId).flatMap(r=>r.segments.filter(s=>s.origin||s.destination||s.departure||s.arrival).map(s=>({...s,baggage:s.baggage??baggageForFlight(r.reading.layoutText||r.reading.text,trip.people.find(p=>p.id===personId)?.name,s,r.segments,trip.people.map(p=>p.name)),documentPath:r.path,pending:r.pending,stale:r.stale})));
 }
 export function syncJourneys(trip){
   let updated=0;
@@ -134,7 +135,7 @@ export function syncDetectedParticipants(trip){
   for(const p of [...trip.people]){if(p.createdFromDocument&&!validName(p.name)&&(!p.ticket||p.ticket==='Pendent')&&(!p.checkin||p.checkin==='Pendent')&&!['origin','phone','arrival','pickup','parking','vehicle','notes'].some(k=>p[k])&&!Object.values(trip.readings||{}).some(r=>(r.confirmed||[]).some(c=>c.personId===p.id))){removeParticipant(trip,p.id);updated++;}}
   for(const [path,r] of Object.entries(trip.readings||{})){
     if(trip.rosterMode==='excel'&&r.name===trip.rosterSource)continue;
-    if(r.status==='ready'&&r.text&&r.parserVersion!==readerVersion&&parseAirlineConfirmation(r.text)){const fresh=analyzeText({text:r.text,people:trip.people,name:r.name});Object.assign(r,fresh);updated++;}
+    if(r.status==='ready'&&r.text&&r.parserVersion!==readerVersion&&parseAirlineConfirmation(r.text)){const fresh=analyzeText({text:r.text,layoutText:r.layoutText,people:trip.people,name:r.name});Object.assign(r,fresh);updated++;}
     if(r.status==='reviewed'){for(const c of r.confirmed||[])c.purchase??=extractPurchase(r.text||'',c.segments||[]);updated+=syncPurchases(trip,path,r.confirmed||[],false);continue;}
     if(!['ready','unread'].includes(r.status)||r.reviewedFingerprint===r.fingerprint)continue;
     if(!r.proposals?.length&&r.text){r.proposals=proposeAssociations(r.text,trip.people);if(r.proposals.length)r.warnings=(r.warnings||[]).filter(w=>!w.startsWith('No s’ha identificat cap passatger'));}
