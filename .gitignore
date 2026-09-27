@@ -8,3 +8,7 @@ dist/.openai/
 !.env.example
 .vercel/
 .clerk/
+.vercel
+
+.DS_Store
+dist/clerk-locale.mjs

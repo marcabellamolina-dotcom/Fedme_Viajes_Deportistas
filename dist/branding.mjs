@@ -1,0 +1,3 @@
+export const isSkiTrip=trip=>['esqui','ski'].includes(String(trip?.sport||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim());
+export const tripLogo=trip=>isSkiTrip(trip)?'<img class="trip-logo" src="/assets/fedme-logo_rojo.webp" alt="FEDME" width="1920" height="470">':'';
+export const spanishLabel=value=>({'Anada':'Ida','Tornada':'Vuelta','Avió':'Avión','Cotxe':'Coche','Per decidir':'Por decidir','Pendent':'Pendiente','Fet':'Hecho','No cal':'No necesario','Comprat':'Comprado','Reservat':'Reservado','Esportista':'Deportista','Tècnic':'Técnico','Altres':'Otros','Ciclisme':'Ciclismo'}[value]||value);

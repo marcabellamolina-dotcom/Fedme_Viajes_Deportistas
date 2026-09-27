@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@clerk/backend": "^3.20.1",
+    "@clerk/localizations": "^4.20.0",
     "@libsql/client": "^0.18.0",
     "pdfjs-dist": "6.3.289",
     "tesseract.js": "7.0.0",
